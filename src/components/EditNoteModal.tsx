@@ -49,15 +49,13 @@ export function EditNoteModal({ visible, note, onSave, onCreate, onClose }: Prop
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: c.background, paddingTop: insets.top + 12 }]}>
-        {/* Header */}
+        {/* Header — con < volver atrás, sin duplicar X/✓ (evita repetición) */}
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={8} style={styles.headerBtn}>
-            <Ionicons name="close" size={22} color={c.text} />
+            <Ionicons name="chevron-back" size={22} color={c.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: c.text }]}>{isEditing ? "Editar nota" : "Crear nota"}</Text>
-          <Pressable onPress={handleSave} hitSlop={8} style={styles.headerBtn}>
-            <Ionicons name="checkmark" size={22} color={c.primary} />
-          </Pressable>
+          <View style={styles.headerBtn} />
         </View>
 
         {/* Fields */}
@@ -84,8 +82,8 @@ export function EditNoteModal({ visible, note, onSave, onCreate, onClose }: Prop
           />
         </View>
 
-        {/* Actions */}
-        <View style={styles.actions}>
+        {/* Actions — más arriba, fuera de safeArea */}
+        <View style={[styles.actions, { paddingBottom: 32 + insets.bottom, marginBottom: 8 }]}>
           <Pressable style={[styles.cancelBtn, { borderColor: c.border }]} onPress={onClose}>
             <Text style={[styles.cancelText, { color: c.text }]}>Cancelar</Text>
           </Pressable>

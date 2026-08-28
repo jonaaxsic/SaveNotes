@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { useRef } from "react";
+import { StyleSheet, TouchableOpacity, View, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Line, Path, Rect } from "react-native-svg";
 
@@ -22,6 +23,7 @@ function NotebookMicIcon({ color, micColor }: { color: string; micColor: string 
 
 export default function WelcomeScreen() {
   const { theme, isDark } = useAppTheme();
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const textColor = Colors[theme].text;
   const textSecondary = Colors[theme].textSecondary;
@@ -30,9 +32,15 @@ export default function WelcomeScreen() {
   const borderColor = Colors[theme].border;
   const background = Colors[theme].background;
 
+  const handleGoHome = () => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+      router.replace("/(tabs)")
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: background }]}>
-      <View style={[styles.container, { backgroundColor: background }]}>
+      <Animated.View style={[styles.container, { backgroundColor: background, opacity: fadeAnim }]}>
         <ThemeToggle style={styles.themeToggleBtn} />
 
         <View style={styles.content}>
@@ -47,7 +55,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             style={[styles.primaryButton, { backgroundColor: buttonBg }]}
             activeOpacity={0.8}
-            onPress={() => router.replace("/(tabs)")}
+            onPress={handleGoHome}
           >
             <Text style={[styles.primaryButtonText, { color: buttonText }]}>Comenzar</Text>
           </TouchableOpacity>
@@ -68,7 +76,7 @@ export default function WelcomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -77,8 +85,8 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   container: { flex: 1, paddingHorizontal: 24, justifyContent: "space-between" },
   themeToggleBtn: { position: "absolute", top: 30, right: 24, zIndex: 1, width: 42, height: 42, borderRadius: 21, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  content: { flex: 1, justifyContent: "center", alignItems: "center", paddingBottom: 280 },
-  iconWrapper: { marginBottom: 6 },
+  content: { flex: 1, justifyContent: "center", alignItems: "center", paddingBottom: 200, marginTop: 40 },
+  iconWrapper: { marginBottom: 8 },
   title: { fontSize: 36, fontWeight: "700", marginBottom: 4 },
   subtitle: { fontSize: 15, textAlign: "center" },
   bottom: { paddingBottom: 60 },

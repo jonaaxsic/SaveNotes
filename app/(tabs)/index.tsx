@@ -12,6 +12,8 @@ import { useAppTheme } from "@/context/ThemeContext";
 import { NoteCategory, Note } from "@/types/note";
 import { useNotes } from "@/hooks/useNotes";
 import { useRecording } from "@/hooks/useRecording";
+import { useAudioPlayback } from "@/hooks/useAudioPlayback";
+import { RecordButton } from "@/components/RecordButton";
 import { noteRepository } from "@/data/SqliteNoteDataSource";
 
 const FILTERS: (NoteCategory | "All")[] = ["All", "Shared", "Meeting", "Ideas"];
@@ -54,10 +56,21 @@ export default function HomeScreen() {
   const { notes, loading, refresh } = useNotes();
   const insets = useSafeAreaInsets();
   const { theme, toggleDrawer, setDrawerActionHandler } = useAppTheme();
-  const { isRecording, toggleRecording } = useRecording(refresh);
+  const {
+    isRecording,
+    isLocked,
+    isPaused,
+    recordingTime,
+    startRecording,
+    stopRecording,
+    lockRecording,
+    cancelRecording,
+    sendRecording,
+    togglePause,
+  } = useRecording(refresh);
+  const { playingId, togglePlay } = useAudioPlayback();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
-  const [playingId, setPlayingId] = useState<string | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -226,7 +239,7 @@ export default function HomeScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 140 + insets.bottom }]}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Ionicons name="document-outline" size={48} color={c.mutedForeground} />
@@ -245,7 +258,7 @@ export default function HomeScreen() {
             <NoteCard
               note={item}
               isPlaying={playingId === item.id}
-              onTogglePlay={() => setPlayingId((prev) => (prev === item.id ? null : item.id))}
+              onTogglePlay={() => togglePlay(item.id, item.audioUri)}
               onShare={() => handleShare(item.transcript, item.title)}
               onEdit={() => handleEditNote(item)}
               onDelete={() => handleDeleteNote(item)}
@@ -254,8 +267,19 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* Record area — fijo arriba de tab bar */}
-      <RecordArea isRecording={isRecording} onPress={toggleRecording} theme={theme} />
+      {/* RecordButton WhatsApp — mismo visual SaveNotes, funcionalidad WhatsApp */}
+      <RecordButton
+        isRecording={isRecording}
+        isLocked={isLocked}
+        isPaused={isPaused}
+        recordingTime={recordingTime}
+        onPressIn={startRecording}
+        onPressOut={stopRecording}
+        onLock={lockRecording}
+        onCancel={cancelRecording}
+        onSend={sendRecording}
+        onTogglePause={togglePause}
+      />
 
       <EditNoteModal
         visible={editModalVisible}
@@ -264,28 +288,6 @@ export default function HomeScreen() {
         onClose={() => { setEditModalVisible(false); setEditingNote(null); }}
         onCreate={handleCreateNote}
       />
-    </View>
-  );
-}
-
-function RecordArea({ isRecording, onPress, theme }: { isRecording: boolean; onPress: () => void; theme: string }) {
-  const [hovered, setHovered] = useState(false);
-  const c = Colors[theme as "light" | "dark"];
-  const bg = isRecording ? c.destructive : hovered ? c.hover : c.card;
-  const borderColor = isRecording ? c.destructive : c.cardBorder;
-
-  return (
-    <View style={[styles.recordArea, { backgroundColor: c.background, borderColor: c.border }]}>
-      <Pressable
-        style={[styles.recordBtn, { backgroundColor: bg, borderColor }]}
-        onPress={onPress}
-        onHoverIn={() => setHovered(true)}
-        onHoverOut={() => setHovered(false)}
-      >
-        <Ionicons name={isRecording ? "stop" : "mic"} size={28} color={isRecording ? "#fff" : c.text} />
-      </Pressable>
-      <Text style={[styles.recordTitle, { color: c.text }]}>{isRecording ? "Grabando..." : "Grabar nueva nota"}</Text>
-      <Text style={[styles.recordSub, { color: c.mutedForeground }]}>{isRecording ? "Toca para detener" : "Presiona para empezar"}</Text>
     </View>
   );
 }
@@ -320,7 +322,7 @@ const styles = StyleSheet.create({
   filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, outlineStyle: "none" as any },
   filterText: { fontSize: 13, fontWeight: "500" },
   filterIcon: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: "center", justifyContent: "center", marginLeft: 6 },
-  listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
+  listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 160 },
   loadingWrap: { flex: 1, alignItems: "center", paddingTop: 40 },
   loadingText: { fontSize: 13 },
   emptyWrap: { alignItems: "center", paddingTop: 72, paddingHorizontal: 24, paddingBottom: 40 },
@@ -328,24 +330,4 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 13, marginTop: 8, textAlign: "center", lineHeight: 18 },
   clearBtn: { marginTop: 20, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
   clearText: { fontSize: 13, fontWeight: "600" },
-  // Record area — fijo arriba de tabs
-  recordArea: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    alignItems: "center",
-  },
-  recordBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 4,
-    boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
-    outlineStyle: "none" as any,
-  },
-  recordTitle: { fontSize: 14, fontWeight: "600", marginTop: 8 },
-  recordSub: { fontSize: 12, marginTop: 2 },
 });

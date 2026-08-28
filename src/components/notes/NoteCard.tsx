@@ -42,7 +42,7 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
 
   return (
     <View
-      style={[styles.card, { backgroundColor: hovered ? c.hover : c.card, borderColor: c.cardBorder }]}
+      style={[styles.card, { backgroundColor: hovered ? c.hover : c.card, borderColor: c.border }]}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
     >
@@ -61,7 +61,7 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
           </Pressable>
 
           {menuOpen && (
-            <View style={[styles.contextMenu, { backgroundColor: c.card, borderColor: c.cardBorder }]}>
+            <View style={[styles.contextMenu, { backgroundColor: c.card, borderColor: c.border }]}>
               <Pressable
                 style={[styles.menuItem, { borderBottomColor: c.cardBorder }]}
                 onPress={() => { setMenuOpen(false); onEdit(); }}
@@ -121,6 +121,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 14,
     marginBottom: 12,
+    overflow: "hidden",
   },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   date: { fontSize: 12, marginLeft: 4, flex: 1 },
@@ -141,10 +142,10 @@ const styles = StyleSheet.create({
   menuItemText: { fontSize: 14, fontWeight: "500" },
   title: { fontSize: 15, fontWeight: "600", marginBottom: 4 },
   transcript: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
-  playerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  playBtn: { width: 32, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", flexDirection: "row", outlineStyle: "none" as any },
-  progressTrack: { flex: 1, height: 4, borderRadius: 2 },
+  playerRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "nowrap" as any },
+  playBtn: { width: 32, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", flexDirection: "row", outlineStyle: "none" as any, flexShrink: 0 },
+  progressTrack: { flex: 1, height: 4, borderRadius: 2, minWidth: 0 } as any,
   progressFill: { height: 4, borderRadius: 2 },
-  durationText: { fontSize: 12, fontWeight: "500" },
-  rightIcons: { flexDirection: "row", alignItems: "center", gap: 14 },
+  durationText: { fontSize: 12, fontWeight: "500", flexShrink: 0 },
+  rightIcons: { flexDirection: "row", alignItems: "center", gap: 14, flexShrink: 0 },
 });

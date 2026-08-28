@@ -67,7 +67,7 @@ export default function HomeDrawer({ visible, onClose, onOrganize, onCalendar, o
     <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" as any }]}>
       {/* Overlay */}
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.4)", opacity: slideX.interpolate({ inputRange: [-DRAWER_W, 0], outputRange: [0, 1] }) }]} />
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: c.overlay, opacity: slideX.interpolate({ inputRange: [-DRAWER_W, 0], outputRange: [0, 1] }) }]} />
       </Pressable>
 
       {/* Drawer */}
