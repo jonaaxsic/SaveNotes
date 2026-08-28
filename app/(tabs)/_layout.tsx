@@ -1,70 +1,49 @@
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { View, StyleSheet, Platform, Alert } from "react-native";
+import { Tabs, router } from "expo-router";
+import TabBar from "@/components/TabBar";
+import HomeDrawer from "@/components/HomeDrawer";
+import { useAppTheme } from "@/context/ThemeContext";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { drawerVisible, setDrawerVisible, onDrawerAction } = useAppTheme();
+
+  const closeDrawer = () => setDrawerVisible(false);
+
+  const handleDrawerAction = (action: string) => {
+    setDrawerVisible(false);
+    onDrawerAction(action as any);
+  };
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+    <View style={styles.root}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: { display: "none" } as any,
         }}
+      >
+        <Tabs.Screen name="index" options={{ title: "Notas" }} />
+        <Tabs.Screen name="ask-Ia" options={{ title: "Ask AI" }} />
+        <Tabs.Screen name="profile" options={{ title: "Perfil" }} />
+        <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
+        <Tabs.Screen name="two" options={{ href: null }} />
+      </Tabs>
+
+      <TabBar />
+
+      <HomeDrawer
+        visible={drawerVisible}
+        onClose={closeDrawer}
+        onOrganize={() => handleDrawerAction("organize")}
+        onCalendar={() => handleDrawerAction("calendar")}
+        onCreateManual={() => handleDrawerAction("createManual")}
+        onSettings={() => handleDrawerAction("settings")}
+        onExit={() => handleDrawerAction("exit")}
       />
-      <Tabs.Screen
-        name="two"
-        options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

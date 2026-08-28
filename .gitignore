@@ -1,7 +1,15 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
 # dependencies
 node_modules/
+
+# AI / Agent files (excluded from repo)
+.agent/
+.ai-dev-kit/
+.atl/
+AI-DEV-KIT/
+AGENTS.md
+CLAUDE.md
+specs/
+docs/
 
 # Expo
 .expo/
