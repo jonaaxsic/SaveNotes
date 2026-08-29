@@ -57,7 +57,7 @@ export default function HomeDrawer({ visible, onClose, onOrganize, onCalendar, o
     Animated.timing(slideX, {
       toValue: visible ? 0 : -DRAWER_W,
       duration: ANIM_DUR,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [visible]);
 

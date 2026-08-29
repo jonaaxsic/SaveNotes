@@ -62,7 +62,7 @@ export function RecordButton({
         if (isRecording && !isLocked && !hasLockedRef.current && gesture.dy < -60) {
           hasLockedRef.current = true;
           onLock?.();
-          Animated.spring(slideY, { toValue: -12, useNativeDriver: true }).start();
+          Animated.spring(slideY, { toValue: -12, useNativeDriver: false }).start();
         }
         // Deslizar a la izquierda para cancelar (dx < -60) — solo si no está bloqueado
         if (isRecording && !isLocked && gesture.dx < -60) {
@@ -70,7 +70,7 @@ export function RecordButton({
         }
       },
       onPanResponderRelease: () => {
-        Animated.spring(slideY, { toValue: 0, useNativeDriver: true }).start();
+        Animated.spring(slideY, { toValue: 0, useNativeDriver: false }).start();
       },
     })
   ).current;

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 
@@ -9,42 +9,44 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 export function useAudioPlayback() {
   const [playingId, setPlayingId] = useState<string | null>(null);
 
-  // Web: HTMLAudio singleton para evitar limitaciones de expo-audio en blob: urls
-  const htmlAudioRef = useState(() => (Platform.OS === "web" ? new Audio() : null))[0];
+  // Web: HTMLAudio singleton — lazy para no romper SSR
+  const [htmlAudio] = useState(() => {
+    if (Platform.OS === "web" && typeof Audio !== "undefined") return new Audio();
+    return null;
+  });
 
-  // Native: expo-audio singleton — updateInterval 200ms para progress si se necesita
-  const player = useAudioPlayer(null as any, { updateInterval: 200 } as any);
-  const status = player ? useAudioPlayerStatus(player as any) : null;
+  // Native: expo-audio singleton — sin source inicial, updateInterval 200ms
+  const player = useAudioPlayer(undefined as any);
+  const status = useAudioPlayerStatus(player as any);
 
   const stop = useCallback(() => {
-    if (Platform.OS === "web" && htmlAudioRef) {
-      htmlAudioRef.pause();
-      htmlAudioRef.currentTime = 0;
-      htmlAudioRef.src = "";
+    if (Platform.OS === "web" && htmlAudio) {
+      htmlAudio.pause();
+      htmlAudio.currentTime = 0;
+      htmlAudio.src = "";
     } else if (player) {
       try {
         (player as any).pause();
       } catch {}
     }
     setPlayingId(null);
-  }, [player, htmlAudioRef]);
+  }, [player, htmlAudio]);
 
   const togglePlay = useCallback(
     async (id: string, uri: string | null) => {
       if (!uri) return;
       // Si es la misma nota, toggle pause/play
       if (playingId === id) {
-        if (Platform.OS === "web" && htmlAudioRef) {
-          if (!htmlAudioRef.paused) htmlAudioRef.pause();
-          else await htmlAudioRef.play().catch(() => {});
-          if (htmlAudioRef.paused) setPlayingId(null);
+        if (Platform.OS === "web" && htmlAudio) {
+          if (!htmlAudio.paused) htmlAudio.pause();
+          else await htmlAudio.play().catch(() => {});
+          if (htmlAudio.paused) setPlayingId(null);
           return;
         }
         if (player) {
           const isPlaying = (status as any)?.playing ?? (player as any).playing;
           if (isPlaying) (player as any).pause();
           else (player as any).play();
-          // Si pausó, limpiar id
           const nowPlaying = (status as any)?.playing ?? (player as any).playing;
           if (!nowPlaying) setPlayingId(null);
         }
@@ -55,13 +57,13 @@ export function useAudioPlayback() {
       stop();
       setPlayingId(id);
 
-      if (Platform.OS === "web" && htmlAudioRef) {
-        htmlAudioRef.src = uri;
-        htmlAudioRef.currentTime = 0;
+      if (Platform.OS === "web" && htmlAudio) {
+        htmlAudio.src = uri;
+        htmlAudio.currentTime = 0;
         try {
-          await htmlAudioRef.play();
-          htmlAudioRef.onended = () => setPlayingId(null);
-          htmlAudioRef.onerror = () => setPlayingId(null);
+          await htmlAudio.play();
+          htmlAudio.onended = () => setPlayingId(null);
+          htmlAudio.onerror = () => setPlayingId(null);
         } catch {
           setPlayingId(null);
         }
@@ -78,14 +80,16 @@ export function useAudioPlayback() {
         setPlayingId(null);
       }
     },
-    [playingId, player, status, htmlAudioRef, stop]
+    [playingId, player, status, htmlAudio, stop]
   );
 
-  // Auto-limpiar al terminar (native)
-  if (player && status && !(status as any).playing && playingId && (status as any).didJustFinish) {
-    // status.didJustFinish existe en AudioStatus
-    setPlayingId(null);
-  }
+  // Auto-limpiar al terminar (native) — en efecto, no durante render
+  useEffect(() => {
+    const s: any = status as any;
+    if (player && s && !s.playing && playingId && s.didJustFinish) {
+      setPlayingId(null);
+    }
+  }, [player, status, playingId]);
 
   return { playingId, togglePlay, stop };
 }

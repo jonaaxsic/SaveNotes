@@ -33,7 +33,7 @@ export default function WelcomeScreen() {
   const background = Colors[theme].background;
 
   const handleGoHome = () => {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+    Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start(() =>
       router.replace("/(tabs)")
     );
   };
