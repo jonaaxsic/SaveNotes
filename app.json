@@ -16,12 +16,15 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.savenotes.app",
-      "permissions": ["android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "SaveNotes necesita acceso al micrófono para grabar tus notas de voz."
+        "NSMicrophoneUsageDescription": "SaveNotes necesita acceso al micrófono para grabar tus notas de voz.",
+        "NSSpeechRecognitionUsageDescription": "SaveNotes necesita reconocimiento de voz para transcribir tus notas."
       }
     },
     "web": {
@@ -38,6 +41,13 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "SaveNotes necesita acceso al micrófono para grabar tus notas de voz.",
+          "speechRecognitionPermission": "SaveNotes necesita reconocimiento de voz para transcribir tus notas."
+        }
       ]
     ],
     "experiments": {
@@ -46,8 +56,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "1ca60d77-2ebf-47ed-8faf-5eb778d421e4"
+        "projectId": "e418ee52-5559-4645-b3e8-a6605185e7f8"
       }
-    }
+    },
+    "owner": "jonaaxsic"
   }
 }

@@ -58,15 +58,9 @@ export default function HomeScreen() {
   const { theme, toggleDrawer, setDrawerActionHandler } = useAppTheme();
   const {
     isRecording,
-    isLocked,
-    isPaused,
     recordingTime,
-    startRecording,
-    stopRecording,
-    lockRecording,
+    toggleRecording,
     cancelRecording,
-    sendRecording,
-    togglePause,
   } = useRecording(refresh);
   const { playingId, togglePlay } = useAudioPlayback();
   const [search, setSearch] = useState("");
@@ -267,18 +261,12 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* RecordButton WhatsApp — mismo visual SaveNotes, funcionalidad WhatsApp */}
+      {/* RecordButton tap-to-toggle — Section 3 */}
       <RecordButton
         isRecording={isRecording}
-        isLocked={isLocked}
-        isPaused={isPaused}
         recordingTime={recordingTime}
-        onPressIn={startRecording}
-        onPressOut={stopRecording}
-        onLock={lockRecording}
+        onPress={toggleRecording}
         onCancel={cancelRecording}
-        onSend={sendRecording}
-        onTogglePause={togglePause}
       />
 
       <EditNoteModal

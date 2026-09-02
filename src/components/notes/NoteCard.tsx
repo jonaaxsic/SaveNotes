@@ -81,9 +81,18 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
         </View>
       </View>
 
-      {/* Title + transcript */}
+      {/* Title + transcript — Section 2.3: placeholder while transcribing */}
       <Text style={[styles.title, { color: c.text }]} numberOfLines={1}>{note.title}</Text>
-      <Text style={[styles.transcript, { color: c.mutedForeground }]} numberOfLines={2}>{note.transcript}</Text>
+      {note.transcript === "Transcribiendo…" ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+          <Ionicons name="hourglass-outline" size={14} color={c.mutedForeground} />
+          <Text style={[styles.transcript, { color: c.mutedForeground, fontStyle: "italic" as const, marginBottom: 0 }]}>
+            Transcribiendo…
+          </Text>
+        </View>
+      ) : (
+        <Text style={[styles.transcript, { color: c.mutedForeground }]} numberOfLines={2}>{note.transcript}</Text>
+      )}
 
       {/* Player row: ▶ + progress bar + duration + icons */}
       <View style={styles.playerRow}>
