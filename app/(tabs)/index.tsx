@@ -164,7 +164,12 @@ export default function HomeScreen() {
     try {
       await noteRepository.update(note.id, { transcript: "Transcribiendo…" });
       await refresh();
-      const text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-ES");
+      let text: string | null = null;
+      try { text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-CL"); }
+      catch (e: any) {
+        if (String(e?.message ?? e).includes("language-not-supported")) text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-ES");
+        else throw e;
+      }
       const finalTranscript = text?.trim() ? text.trim() : "No se pudo transcribir — toca para reintentar";
       const words = finalTranscript.split(/\s+/).slice(0, 6).join(" ");
       const finalTitle = finalTranscript.startsWith("No se") ? note.title : (words.charAt(0).toUpperCase() + words.slice(1) + (finalTranscript.split(/\s+/).length > 6 ? "…" : ""));
@@ -172,8 +177,8 @@ export default function HomeScreen() {
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       let userMsg = "No se pudo transcribir — toca para reintentar";
-      if (msg.includes("language-not-supported")) userMsg = "Idioma no soportado — descarga el paquete es-ES en Ajustes";
-      else if (msg.includes("network")) userMsg = "Sin conexión — revisa tu internet";
+      if (msg.includes("language-not-supported")) userMsg = "Idioma no soportado — descarga el paquete es-CL/es-ES en Ajustes";
+      else if (msg.includes("network")) userMsg = "Sin conexión — modelo offline no instalado, revisa Ajustes";
       else if (note.audioUri.endsWith(".m4a")) userMsg = "Audio antiguo (.m4a) no compatible — regrabá la nota para usar el nuevo formato";
       try { await noteRepository.update(note.id, { transcript: userMsg }); } catch {}
     }

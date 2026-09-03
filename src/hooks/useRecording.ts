@@ -2,8 +2,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { noteRepository } from "@/data/SqliteNoteDataSource";
 import { AudioModule, setAudioModeAsync, useAudioRecorder, RecordingPresets, useAudioRecorderState } from "expo-audio";
+import * as FileSystem from "expo-file-system";
 import { liveTranscriptionService, type LiveSessionResult } from "@/services/liveTranscriptionService";
 import { transcriptionService } from "@/services/transcriptionService";
+
+async function persistAudioFile(tempUri: string | null): Promise<string | null> {
+  if (!tempUri) return null;
+  // Ya es persistente (live con documentDirectory) -> devolver tal cual
+  if (tempUri.includes("/Documents/") || tempUri.includes("SaveNotes/audio")) return tempUri;
+  try {
+    const docs = (FileSystem as any).documentDirectory ?? null;
+    if (!docs) return tempUri;
+    const dir = `${docs}SaveNotes/audio/`;
+    try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch {}
+    const name = `nota_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.m4a`;
+    const dest = `${dir}${name}`;
+    await FileSystem.copyAsync({ from: tempUri, to: dest });
+    return dest;
+  } catch (e) {
+    console.warn("[audio] persistAudioFile fallback to tempUri:", e);
+    return tempUri;
+  }
+}
 
 function buildTitleFromTranscript(transcript: string | null | undefined): string {
   if (transcript && transcript.trim() && !transcript.startsWith("No se") && !transcript.startsWith("Grabación de voz")) {
@@ -28,6 +48,8 @@ type DialogState = {
 
 export function useRecording(onCreated: () => void) {
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+  const [audioPermissionGranted, setAudioPermissionGranted] = useState(false);
+  const [speechPermissionGranted, setSpeechPermissionGranted] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -56,38 +78,47 @@ export function useRecording(onCreated: () => void) {
   }, []);
   const dismissDialog = useCallback(() => setDialog((p) => ({ ...p, visible: false })), []);
 
-  // Request permissions on mount — audio + speech
+  // Request permissions on mount — audio y speech separados (plan §10)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        // Check both
         const audioPerm = await AudioModule.getRecordingPermissionsAsync().catch(() => null);
         const speechPerm = await liveTranscriptionService.getPermissions().catch(() => null);
         const audioGranted = !!audioPerm?.granted;
         const speechGranted = !!speechPerm?.granted;
-        if (!cancelled && audioGranted && speechGranted) {
-          setIsPermissionGranted(true);
-          try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true }); } catch {}
-          return;
-        }
-        // Request speech permissions (also asks RECORD_AUDIO on Android)
-        try {
-          const req = await liveTranscriptionService.requestPermissions();
-          if (!cancelled && req) {
-            setIsPermissionGranted(true);
+        if (!cancelled) {
+          setAudioPermissionGranted(audioGranted);
+          setSpeechPermissionGranted(speechGranted);
+          if (audioGranted) setIsPermissionGranted(true);
+          if (audioGranted && speechGranted) {
             try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true }); } catch {}
-          } else {
-            // Fallback: try legacy audio permission
-            try {
-              const reqAudio = await AudioModule.requestRecordingPermissionsAsync();
-              if (!cancelled && reqAudio.granted) {
-                setIsPermissionGranted(true);
-                try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true }); } catch {}
-              }
-            } catch {}
+            return;
+          }
+          if (audioGranted) {
+            try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true }); } catch {}
+          }
+        }
+        // Si falta speech, intentar pedirlo pero sin bloquear audio
+        try {
+          const req = await liveTranscriptionService.requestPermissions().catch(() => false);
+          if (!cancelled && req) {
+            setSpeechPermissionGranted(true);
+            setIsPermissionGranted(true);
           }
         } catch {}
+        // Fallback legacy audio si sigue sin audio
+        if (!audioGranted) {
+          try {
+            const reqAudio = await AudioModule.requestRecordingPermissionsAsync();
+            if (!cancelled && reqAudio.granted) {
+              setAudioPermissionGranted(true);
+              setIsPermissionGranted(true);
+              try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true }); } catch {}
+            }
+          } catch {}
+        }
+        return;
       } catch (e) {
         console.error("[recording] permission check failed:", e);
       }
@@ -125,20 +156,44 @@ export function useRecording(onCreated: () => void) {
 
   const persistLiveResult = useCallback(async (durationSec: number, result: LiveSessionResult) => {
     const duration = Math.max(1, Math.round(durationSec));
-    const uri = result.audioUri ?? null;
+    const rawUri = result.audioUri ?? null;
+    const uri = await persistAudioFile(rawUri);
     let transcript = result.finalTranscript?.trim() ?? "";
+    let isLiveError = !!result.errorCode;
 
     // Map error codes to user messages
     if (result.errorCode) {
       const code = result.errorCode;
       if (code === "not-allowed") transcript = "Permiso denegado — activa micrófono y reconocimiento en Ajustes";
-      else if (code === "language-not-supported") transcript = "Idioma no soportado — descarga el paquete es-ES en Ajustes";
-      else if (code === "network") transcript = "Sin conexión — conecta a internet o descarga el modelo offline es-ES";
+      else if (code === "language-not-supported") transcript = "Idioma no soportado — descarga el paquete es-CL/es-ES en Ajustes";
+      else if (code === "network") transcript = "Sin conexión — conecta a internet o descarga el modelo offline";
       else if (code === "service-not-allowed") transcript = "Servicio no disponible — instala Google Speech Services";
       else if (!transcript) transcript = "No se pudo transcribir — toca para reintentar";
     } else if (!transcript) {
-      // Antes decía "No se pudo guardar audio — reintenta" si uri era null, pero eso confundía: el audio SÍ se guardó (fallback) o el problema fue solo transcripción
       transcript = "No se detectó voz — toca para reintentar";
+      isLiveError = true;
+    }
+
+    // FASE 3: fallback file-based si live falló pero hay audio — offline-first es-CL -> es-ES
+    if (isLiveError && uri) {
+      try {
+        setIsTranscribing(true);
+        let text: string | null = null;
+        try {
+          text = await transcriptionService.transcribeAudioFile(uri, "es-CL");
+        } catch (e: any) {
+          if (String(e?.message ?? e).includes("language-not-supported")) {
+            text = await transcriptionService.transcribeAudioFile(uri, "es-ES");
+          } else throw e;
+        }
+        if (text?.trim()) {
+          transcript = text.trim();
+          isLiveError = false;
+        }
+      } catch (e: any) {
+        console.warn("[recording] fallback transcribe failed:", e);
+        // mantener transcript de error de live
+      } finally { setIsTranscribing(false); }
     }
 
     const isError = transcript.startsWith("No se") || transcript.startsWith("Permiso") || transcript.startsWith("Idioma") || transcript.startsWith("Sin conexión") || transcript.startsWith("Servicio");
@@ -153,9 +208,10 @@ export function useRecording(onCreated: () => void) {
     }
   }, [onCreated, showDialog]);
 
-  // Legacy file-based fallback for web or when live fails to produce audio
-  const persistWithFileTranscription = useCallback(async (durationSec: number, uri: string | null) => {
+  // Legacy file-based fallback for web o reintento — offline-first es-CL -> es-ES
+  const persistWithFileTranscription = useCallback(async (durationSec: number, rawUri: string | null) => {
     const duration = Math.max(1, Math.round(durationSec));
+    const uri = await persistAudioFile(rawUri);
     if (!uri) {
       await noteRepository.create({ title: `Nota de voz ${new Date().toLocaleTimeString()}`, transcript: "No se pudo transcribir — sin audio", audioUri: null, category: "Ideas", duration });
       onCreated();
@@ -163,7 +219,12 @@ export function useRecording(onCreated: () => void) {
     }
     setIsTranscribing(true);
     try {
-      const text = await transcriptionService.transcribeAudioFile(uri, "es-ES");
+      let text: string | null = null;
+      try { text = await transcriptionService.transcribeAudioFile(uri, "es-CL"); }
+      catch (e: any) {
+        if (String(e?.message ?? e).includes("language-not-supported")) text = await transcriptionService.transcribeAudioFile(uri, "es-ES");
+        else throw e;
+      }
       const finalTranscript = text?.trim() ? text.trim() : "No se pudo transcribir — toca para reintentar";
       const finalTitle = text?.trim() && !finalTranscript.startsWith("No se pudo") ? buildTitleFromTranscript(finalTranscript) : `Nota de voz ${new Date().toLocaleTimeString()}`;
       await noteRepository.create({ title: finalTitle, transcript: finalTranscript, audioUri: uri, category: "Ideas", duration });
@@ -201,7 +262,7 @@ export function useRecording(onCreated: () => void) {
           setWebRecording(true);
           // Start live session in background for interim
           const livePromise = liveTranscriptionService.startLive({
-            lang: "es-ES",
+            lang: "es-CL",
             onInterim: (t) => setInterimTranscript(t),
           });
           liveSessionRef.current = livePromise;
@@ -244,9 +305,11 @@ export function useRecording(onCreated: () => void) {
       granted = true;
     }
 
-    if (!liveTranscriptionService.isRecognitionAvailable()) {
-      showDialog({ title: "No disponible", message: "El reconocimiento de voz no está disponible en este dispositivo.", variant: "info" });
-      return;
+    const recognitionAvailable = (() => {
+      try { return liveTranscriptionService.isRecognitionAvailable(); } catch (e) { console.error("[speech] isRecognitionAvailable falló:", e); return false; }
+    })();
+    if (!recognitionAvailable) {
+      console.warn("[speech] Reconocimiento no disponible. El audio se grabará igualmente.");
     }
 
     try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true }); } catch (e) { console.error("[recording] setAudioMode failed:", e); }
@@ -255,6 +318,27 @@ export function useRecording(onCreated: () => void) {
     if (Platform.OS === "android") {
       const pkg = liveTranscriptionService.pickAndroidServicePackage();
       console.log("[recording] Android service package:", pkg ?? "(default)", "available:", liveTranscriptionService.getAvailableServices(), "supportsRecording:", liveTranscriptionService.supportsRecording());
+    }
+
+    // FASE 1: si no hay STT, grabar igual con expo-audio puro — nunca bloquear por isRecognitionAvailable
+    if (!recognitionAvailable) {
+      try {
+        await recorder.prepareToRecordAsync();
+      } catch (e) {
+        console.error("[recording] prepareToRecordAsync failed (no-STT path):", e);
+        showDialog({ title: "Error", message: `No se pudo preparar la grabación: ${String((e as any)?.message ?? e)}`, variant: "info" });
+        setRecordingTime(0); startTimeRef.current = 0;
+        return;
+      }
+      try {
+        recorder.record();
+      } catch (e) {
+        console.error("[recording] recorder.record failed (no-STT path):", e);
+        showDialog({ title: "Error", message: `No se pudo iniciar la grabación: ${String((e as any)?.message ?? e)}`, variant: "info" });
+        setRecordingTime(0); startTimeRef.current = 0;
+        return;
+      }
+      return;
     }
 
     // Fallback: Android <13 / sin persist → usar expo-audio para el archivo + live sin persist para transcript
@@ -268,37 +352,37 @@ export function useRecording(onCreated: () => void) {
         return;
       }
       try {
-        const livePromise = liveTranscriptionService.startLive({
-          lang: "es-ES",
-          persistAudio: false,
-          onInterim: (text) => setInterimTranscript(text),
-        });
-        liveSessionRef.current = livePromise;
-      } catch (e) {
-        console.error("[recording] startLive fallback failed:", e);
-        // Si live falla, igual seguimos grabando audio para no perder la nota (transcript quedará con error)
-        liveSessionRef.current = Promise.resolve({ finalTranscript: null, audioUri: null, didAbort: false, errorCode: String((e as any)?.message ?? "unknown") });
-      }
-      try {
-        recorder.record();
-      } catch (e) {
-        console.error("[recording] recorder.record failed:", e);
-        try { await liveTranscriptionService.abort(); } catch {}
-        liveSessionRef.current = null;
-        showDialog({ title: "Error", message: `No se pudo iniciar la grabación: ${String((e as any)?.message ?? e)}`, variant: "info" });
-        setRecordingTime(0); startTimeRef.current = 0;
+          const livePromise = liveTranscriptionService.startLive({
+            lang: "es-CL",
+            persistAudio: false,
+            onInterim: (text) => setInterimTranscript(text),
+          });
+          // Fallback a es-ES si es-CL no soportado (sin bloquear audio)
+          livePromise.catch(() => {});
+          liveSessionRef.current = livePromise;
+        } catch (e) {
+          console.error("[recording] startLive fallback failed:", e);
+          liveSessionRef.current = Promise.resolve({ finalTranscript: null, audioUri: null, didAbort: false, errorCode: String((e as any)?.message ?? "unknown") });
+        }
+        try {
+          recorder.record();
+        } catch (e) {
+          console.error("[recording] recorder.record failed:", e);
+          try { await liveTranscriptionService.abort(); } catch {}
+          liveSessionRef.current = null;
+          showDialog({ title: "Error", message: `No se pudo iniciar la grabación: ${String((e as any)?.message ?? e)}`, variant: "info" });
+          setRecordingTime(0); startTimeRef.current = 0;
+          return;
+        }
         return;
       }
-      // No setIsRecordingNative — effectiveIsRecording viene de recorderState
-      return;
-    }
 
-    try {
-      const sessionPromise = liveTranscriptionService.startLive({
-        lang: "es-ES",
-        persistAudio: true,
-        onInterim: (text) => setInterimTranscript(text),
-      });
+      try {
+        const sessionPromise = liveTranscriptionService.startLive({
+          lang: "es-CL",
+          persistAudio: true,
+          onInterim: (text) => setInterimTranscript(text),
+        });
       liveSessionRef.current = sessionPromise;
       setIsRecordingNative(true);
     } catch (e) {
@@ -388,10 +472,15 @@ export function useRecording(onCreated: () => void) {
     setIsTranscribing(true);
     try {
       if (useFallbackAudio) {
-        // Fallback: audio viene de expo-audio, transcript de live
+        // Fallback: audio viene de expo-audio, transcript de live — con timeout 4s (plan §19)
         let liveResult: LiveSessionResult | null = null;
         try { await liveTranscriptionService.stop(); } catch {}
-        try { liveResult = liveSessionRef.current ? await liveSessionRef.current : null; } catch {}
+        try {
+          liveResult = liveSessionRef.current ? await Promise.race([
+            liveSessionRef.current,
+            new Promise<null>((res) => setTimeout(() => res(null), 4000)),
+          ]) as any : null;
+        } catch {}
         liveSessionRef.current = null;
         let uri: string | null = null;
         let duration = elapsed;
@@ -412,13 +501,35 @@ export function useRecording(onCreated: () => void) {
         // Si tenemos audio aunque transcript falle, guardamos igual — nunca "no se pudo guardar audio"
         await persistLiveResult(duration, combined);
       } else {
+        // FASE 1 FIX + timeout 4s: capturar audio de expo-audio si live no entregó uri (STT no disponible)
+        let liveResult: LiveSessionResult | null = null;
         try { await liveTranscriptionService.stop(); } catch {}
-        const result = liveSessionRef.current ? await liveSessionRef.current : { finalTranscript: interimTranscript || null, audioUri: null, didAbort: false } as LiveSessionResult;
+        try {
+          liveResult = liveSessionRef.current ? await Promise.race([
+            liveSessionRef.current,
+            new Promise<null>((res) => setTimeout(() => res(null), 4000)),
+          ]) as any : null;
+        } catch {}
         liveSessionRef.current = null;
         setIsRecordingNative(false);
+        // Si no hay uri de live pero expo-audio estaba grabando (ruta no-STT), capturar ese uri
+        let fallbackUri: string | null = liveResult?.audioUri ?? null;
+        let fallbackDuration = elapsed;
+        if (!fallbackUri && recorderState.isRecording) {
+          try {
+            await recorder.stop();
+            fallbackUri = (recorder as any).uri ?? null;
+            const ct = (recorder as any).currentTime;
+            if (ct && isFinite(ct)) fallbackDuration = Math.max(elapsed, Math.round(ct as number));
+          } catch {}
+        }
+        const result: LiveSessionResult = liveResult ?? { finalTranscript: interimTranscript || null, audioUri: fallbackUri, didAbort: false };
+        // Si liveResult existía pero sin uri, completar con fallbackUri
+        if (!result.audioUri && fallbackUri) result.audioUri = fallbackUri;
+        const finalDuration = fallbackUri ? fallbackDuration : elapsed;
         setRecordingTime(0); startTimeRef.current = 0;
         setInterimTranscript("");
-        await persistLiveResult(elapsed, result);
+        await persistLiveResult(finalDuration, result);
       }
     } catch (e: any) {
       console.error("[recording] stop failed:", e);
