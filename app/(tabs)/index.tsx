@@ -359,6 +359,7 @@ export default function HomeScreen() {
         onShare={() => expandedNote && handleShare(expandedNote.transcript, expandedNote.title)}
         onEdit={() => { if (expandedNote) { const n = expandedNote; setExpandedNote(null); handleEditNote(n); } }}
         onDelete={() => { if (expandedNote) { const n = expandedNote; setExpandedNote(null); handleDeleteNote(n); } }}
+        onRetry={() => expandedNote && handleRetryTranscription(expandedNote)}
       />
     </View>
   );

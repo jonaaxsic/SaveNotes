@@ -32,9 +32,10 @@ type Props = {
   onShare: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onRetry?: () => void;
 };
 
-export function NoteDetailModal({ visible, note, isPlaying, onClose, onTogglePlay, onShare, onEdit, onDelete }: Props) {
+export function NoteDetailModal({ visible, note, isPlaying, onClose, onTogglePlay, onShare, onEdit, onDelete, onRetry }: Props) {
   const { theme } = useAppTheme();
   const c = Colors[theme];
 
@@ -61,7 +62,24 @@ export function NoteDetailModal({ visible, note, isPlaying, onClose, onTogglePla
           <Text style={[styles.title, { color: c.text }]}>{note.title}</Text>
 
           <ScrollView style={[styles.scroll, { borderColor: c.border }]} contentContainerStyle={{ paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
-            <Text style={[styles.transcript, { color: c.text }]}>{note.transcript}</Text>
+            {note.transcript === "Transcribiendo…" ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="hourglass-outline" size={14} color={c.mutedForeground} />
+                <Text style={[styles.transcript, { color: c.mutedForeground, fontStyle: "italic" as const }]}>Transcribiendo…</Text>
+              </View>
+            ) : note.transcript.includes("reintentar") || note.transcript.startsWith("No se") || note.transcript.startsWith("Permiso") ? (
+              <View>
+                <Text style={[styles.transcript, { color: c.text }]}>{note.transcript}</Text>
+                {note.audioUri && onRetry && (
+                  <Pressable onPress={() => { onClose(); onRetry(); }} style={[styles.retryBtn, { backgroundColor: c.muted, borderColor: c.border, marginTop: 12 }]}>
+                    <Ionicons name="refresh" size={14} color={c.primary} />
+                    <Text style={[styles.retryText, { color: c.primary }]}>Reintentar transcripción</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : (
+              <Text style={[styles.transcript, { color: c.text }]}>{note.transcript}</Text>
+            )}
           </ScrollView>
 
           {/* Player */}
@@ -131,4 +149,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: 12 },
   actionBtn: { flex: 1, height: 44, borderRadius: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   actionText: { fontSize: 14, fontWeight: "600" },
+  retryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1 },
+  retryText: { fontSize: 13, fontWeight: "600" },
 });
