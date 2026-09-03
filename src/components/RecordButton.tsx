@@ -9,6 +9,7 @@ type Props = {
   isRecording: boolean;
   isLocked?: boolean;
   recordingTime?: number;
+  interimTranscript?: string;
   // New API (Section 3): single toggle
   onPress?: () => void;
   // Legacy compat (will be removed)
@@ -30,6 +31,7 @@ function formatTime(sec: number) {
 export function RecordButton({
   isRecording,
   recordingTime = 0,
+  interimTranscript = "",
   onPress,
   onPressIn,
   onPressOut,
@@ -49,12 +51,22 @@ export function RecordButton({
     else if (onPressOut && isRecording) onPressOut();
   };
 
-  // Recording state: toggle to stop, with cancel option
+  // Recording state: toggle to stop, with cancel option + live interim
   if (isRecording) {
     return (
       <View style={[styles.wrapperFull, { bottom, pointerEvents: "box-none" as any }]}>
         <View style={[styles.separatorFull, { backgroundColor: c.border }]} />
         <Text style={[styles.timer, { color: c.text }]}>{formatTime(recordingTime)}</Text>
+        {interimTranscript ? (
+          <View style={[styles.interimWrap, { backgroundColor: c.muted, borderColor: c.border }]}>
+            <Ionicons name="mic" size={12} color={c.primary} />
+            <Text style={[styles.interimText, { color: c.text }]} numberOfLines={2}>
+              {interimTranscript}
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.listening, { color: c.mutedForeground }]}>Escuchando…</Text>
+        )}
         <View style={{ flexDirection: "row", gap: 12, alignItems: "center", justifyContent: "center" }}>
           <Pressable
             hitSlop={8}
@@ -145,4 +157,7 @@ const styles = StyleSheet.create({
   },
   cardText: { fontSize: 13, fontWeight: "600" },
   timer: { fontSize: 14, fontWeight: "700", marginBottom: 8, fontVariant: ["tabular-nums"] as any },
+  interimWrap: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, marginBottom: 10, maxWidth: "88%", alignSelf: "center" },
+  interimText: { fontSize: 13, fontWeight: "500", flex: 1, lineHeight: 18 },
+  listening: { fontSize: 12, fontStyle: "italic", marginBottom: 10 },
 });

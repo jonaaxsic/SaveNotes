@@ -1,12 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EditNoteModal } from "@/components/EditNoteModal";
 import { NoteCard } from "@/components/notes/NoteCard";
+import { NoteDetailModal } from "@/components/notes/NoteDetailModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ModernDialog } from "@/components/ModernDialog";
 import Colors from "@/constants/Colors";
 import { useAppTheme } from "@/context/ThemeContext";
 import { NoteCategory, Note } from "@/types/note";
@@ -15,6 +17,7 @@ import { useRecording } from "@/hooks/useRecording";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { RecordButton } from "@/components/RecordButton";
 import { noteRepository } from "@/data/SqliteNoteDataSource";
+import { transcriptionService } from "@/services/transcriptionService";
 
 const FILTERS: (NoteCategory | "All")[] = ["All", "Shared", "Meeting", "Ideas"];
 const FILTER_LABELS: Record<string, string> = { All: "Todas", Shared: "Compartidas", Meeting: "Reuniones", Ideas: "Ideas" };
@@ -59,6 +62,9 @@ export default function HomeScreen() {
   const {
     isRecording,
     recordingTime,
+    interimTranscript,
+    dialog: recordingDialog,
+    dismissDialog: dismissRecordingDialog,
     toggleRecording,
     cancelRecording,
   } = useRecording(refresh);
@@ -69,6 +75,10 @@ export default function HomeScreen() {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [monthFilter, setMonthFilter] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Note | null>(null);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [shareNote, setShareNote] = useState<Note | null>(null);
+  const [expandedNote, setExpandedNote] = useState<Note | null>(null);
 
   const c = Colors[theme];
   const background = c.background;
@@ -95,14 +105,7 @@ export default function HomeScreen() {
           router.push("/(tabs)/settings");
           break;
         case "exit":
-          if (Platform.OS === "web") {
-            if (window.confirm("¿Cerrar sesión?")) router.replace("/");
-          } else {
-            Alert.alert("Cerrar sesión", "¿Estás seguro?", [
-              { text: "Cancelar", style: "cancel" },
-              { text: "Salir", onPress: () => router.replace("/") },
-            ]);
-          }
+          setConfirmExit(true);
           break;
       }
     });
@@ -132,7 +135,7 @@ export default function HomeScreen() {
     try {
       await Share.share({ message: `${title}\n\n${transcript}`, title });
     } catch {
-      Alert.alert("Compartir", `${title}\n\n${transcript}`);
+      setShareNote({ id: "", title, transcript, audioUri: null, category: "Ideas", duration: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     }
   };
 
@@ -142,22 +145,39 @@ export default function HomeScreen() {
   };
 
   const handleDeleteNote = (note: Note) => {
-    const doDelete = async () => {
-      try {
-        await noteRepository.delete(note.id);
-        await refresh();
-      } catch (e) {
-        console.error("Error eliminando nota:", e);
-      }
-    };
-    if (Platform.OS === "web") {
-      if (window.confirm(`¿Eliminar "${note.title}"?`)) doDelete();
-    } else {
-      Alert.alert("Eliminar nota", `¿Eliminar "${note.title}"?`, [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Eliminar", style: "destructive", onPress: doDelete },
-      ]);
+    setConfirmDelete(note);
+  };
+  const doDeleteNote = async () => {
+    if (!confirmDelete) return;
+    try {
+      await noteRepository.delete(confirmDelete.id);
+      await refresh();
+    } catch (e) {
+      console.error("Error eliminando nota:", e);
     }
+    setConfirmDelete(null);
+  };
+
+  const handleRetryTranscription = async (note: Note) => {
+    if (!note.audioUri) return;
+    // Optimistic: show transcribing
+    try {
+      await noteRepository.update(note.id, { transcript: "Transcribiendo…" });
+      await refresh();
+      const text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-ES");
+      const finalTranscript = text?.trim() ? text.trim() : "No se pudo transcribir — toca para reintentar";
+      const words = finalTranscript.split(/\s+/).slice(0, 6).join(" ");
+      const finalTitle = finalTranscript.startsWith("No se") ? note.title : (words.charAt(0).toUpperCase() + words.slice(1) + (finalTranscript.split(/\s+/).length > 6 ? "…" : ""));
+      await noteRepository.update(note.id, { transcript: finalTranscript, title: finalTitle });
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      let userMsg = "No se pudo transcribir — toca para reintentar";
+      if (msg.includes("language-not-supported")) userMsg = "Idioma no soportado — descarga el paquete es-ES en Ajustes";
+      else if (msg.includes("network")) userMsg = "Sin conexión — revisa tu internet";
+      else if (note.audioUri.endsWith(".m4a")) userMsg = "Audio antiguo (.m4a) no compatible — regrabá la nota para usar el nuevo formato";
+      try { await noteRepository.update(note.id, { transcript: userMsg }); } catch {}
+    }
+    await refresh();
   };
 
   const handleSaveEdit = async (id: string, data: { title: string; transcript: string }) => {
@@ -256,15 +276,18 @@ export default function HomeScreen() {
               onShare={() => handleShare(item.transcript, item.title)}
               onEdit={() => handleEditNote(item)}
               onDelete={() => handleDeleteNote(item)}
+              onRetry={() => handleRetryTranscription(item)}
+              onPress={() => setExpandedNote(item)}
             />
           )}
         />
       )}
 
-      {/* RecordButton tap-to-toggle — Section 3 */}
+      {/* RecordButton tap-to-toggle — Option A live with interim */}
       <RecordButton
         isRecording={isRecording}
         recordingTime={recordingTime}
+        interimTranscript={interimTranscript}
         onPress={toggleRecording}
         onCancel={cancelRecording}
       />
@@ -275,6 +298,62 @@ export default function HomeScreen() {
         onSave={handleSaveEdit}
         onClose={() => { setEditModalVisible(false); setEditingNote(null); }}
         onCreate={handleCreateNote}
+      />
+
+      {/* Modern dialogs — reemplazan Alert.alert Android 5 */}
+      <ModernDialog
+        visible={recordingDialog.visible}
+        title={recordingDialog.title}
+        message={recordingDialog.message}
+        variant={recordingDialog.variant}
+        confirmLabel={recordingDialog.confirmLabel}
+        cancelLabel={recordingDialog.cancelLabel}
+        onConfirm={() => { recordingDialog.onConfirm?.(); dismissRecordingDialog(); }}
+        onCancel={dismissRecordingDialog}
+        onClose={dismissRecordingDialog}
+      />
+      <ModernDialog
+        visible={!!confirmDelete}
+        title="Eliminar nota"
+        message={confirmDelete ? `¿Eliminar "${confirmDelete.title}"?` : ""}
+        variant="destructive"
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        onConfirm={doDeleteNote}
+        onCancel={() => setConfirmDelete(null)}
+        onClose={() => setConfirmDelete(null)}
+      />
+      <ModernDialog
+        visible={confirmExit}
+        title="Cerrar sesión"
+        message="¿Estás seguro?"
+        variant="confirm"
+        confirmLabel="Salir"
+        cancelLabel="Cancelar"
+        onConfirm={() => { setConfirmExit(false); router.replace("/"); }}
+        onCancel={() => setConfirmExit(false)}
+        onClose={() => setConfirmExit(false)}
+      />
+      <ModernDialog
+        visible={!!shareNote}
+        title={shareNote?.title ?? "Compartir"}
+        message={shareNote?.transcript ?? ""}
+        variant="info"
+        confirmLabel="Entendido"
+        onConfirm={() => setShareNote(null)}
+        onClose={() => setShareNote(null)}
+      />
+
+      {/* Expanded card — ver nota completa */}
+      <NoteDetailModal
+        visible={!!expandedNote}
+        note={expandedNote}
+        isPlaying={!!expandedNote && playingId === expandedNote.id}
+        onClose={() => setExpandedNote(null)}
+        onTogglePlay={() => expandedNote && togglePlay(expandedNote.id, expandedNote.audioUri)}
+        onShare={() => expandedNote && handleShare(expandedNote.transcript, expandedNote.title)}
+        onEdit={() => { if (expandedNote) { const n = expandedNote; setExpandedNote(null); handleEditNote(n); } }}
+        onDelete={() => { if (expandedNote) { const n = expandedNote; setExpandedNote(null); handleDeleteNote(n); } }}
       />
     </View>
   );

@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import {
   ExpoSpeechRecognitionModule,
+  AudioEncodingAndroid,
   type ExpoSpeechRecognitionResultEvent,
   type ExpoSpeechRecognitionErrorEvent,
 } from "expo-speech-recognition";
@@ -133,11 +134,10 @@ export const transcriptionService = {
         continuous: false,
         requiresOnDeviceRecognition: requiresOnDevice,
         addsPunctuation: true,
-        // Supported: 16000hz PCM wav / mp3 / ogg per docs. expo-audio m4a may need fallback.
         audioSource: {
           uri,
-          // @ts-ignore — types vary by version
           audioChannels: 1,
+          audioEncoding: AudioEncodingAndroid.ENCODING_PCM_16BIT,
           sampleRate: 16000,
         },
       });

@@ -31,9 +31,11 @@ type Props = {
   onShare: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onRetry?: () => void;
+  onPress?: () => void;
 };
 
-export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDelete }: Props) {
+export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDelete, onRetry, onPress }: Props) {
   const { theme } = useAppTheme();
   const c = Colors[theme];
   const hasAudio = note.audioUri !== null;
@@ -41,10 +43,11 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <View
+    <Pressable
+      onPress={onPress}
       style={[styles.card, { backgroundColor: hovered ? c.hover : c.card, borderColor: c.border }]}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => { setHovered(false); setMenuOpen(false); }}
     >
       {/* Header: date + ⋯ */}
       <View style={styles.cardHeader}>
@@ -81,7 +84,7 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
         </View>
       </View>
 
-      {/* Title + transcript — Section 2.3: placeholder while transcribing */}
+      {/* Title + transcript — live transcript + retry for errors */}
       <Text style={[styles.title, { color: c.text }]} numberOfLines={1}>{note.title}</Text>
       {note.transcript === "Transcribiendo…" ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
@@ -90,6 +93,14 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
             Transcribiendo…
           </Text>
         </View>
+      ) : note.transcript.includes("reintentar") || note.transcript.startsWith("No se") || note.transcript.startsWith("Permiso") || note.transcript.startsWith("Sin conexión") || note.transcript.startsWith("Servicio") ? (
+        <Pressable
+          onPress={onRetry}
+          style={[styles.retryWrap, { backgroundColor: "rgba(229,57,53,0.08)", borderColor: "rgba(229,57,53,0.22)" }]}
+        >
+          <Ionicons name="refresh" size={14} color={c.destructive} />
+          <Text style={[styles.retryText, { color: c.destructive }]} numberOfLines={2}>{note.transcript}</Text>
+        </Pressable>
       ) : (
         <Text style={[styles.transcript, { color: c.mutedForeground }]} numberOfLines={2}>{note.transcript}</Text>
       )}
@@ -98,7 +109,7 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
       <View style={styles.playerRow}>
         <Pressable
           style={[styles.playBtn, { backgroundColor: c.primary }]}
-          onPress={onTogglePlay}
+          onPress={(e) => { e?.stopPropagation?.(); onTogglePlay(); }}
         >
           <Ionicons name={isPlaying ? "pause" : "play"} size={14} color={c.primaryForeground} style={isPlaying ? undefined : { marginLeft: 1 }} />
         </Pressable>
@@ -112,15 +123,15 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
 
         {/* Right icons */}
         <View style={styles.rightIcons}>
-          <Pressable hitSlop={8} onPress={onShare}>
+          <Pressable hitSlop={8} onPress={(e) => { e?.stopPropagation?.(); onShare(); }}>
             <Ionicons name="paper-plane-outline" size={18} color={c.mutedForeground} />
           </Pressable>
-          <Pressable hitSlop={8} onPress={onDelete}>
+          <Pressable hitSlop={8} onPress={(e) => { e?.stopPropagation?.(); onDelete(); }}>
             <Ionicons name="trash-outline" size={18} color={c.destructive} />
           </Pressable>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -130,7 +141,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 14,
     marginBottom: 12,
-    overflow: "hidden",
   },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   date: { fontSize: 12, marginLeft: 4, flex: 1 },
@@ -151,6 +161,8 @@ const styles = StyleSheet.create({
   menuItemText: { fontSize: 14, fontWeight: "500" },
   title: { fontSize: 15, fontWeight: "600", marginBottom: 4 },
   transcript: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
+  retryWrap: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
+  retryText: { fontSize: 12, fontWeight: "600", flex: 1, lineHeight: 16 },
   playerRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "nowrap" as any },
   playBtn: { width: 32, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", flexDirection: "row", outlineStyle: "none" as any, flexShrink: 0 },
   progressTrack: { flex: 1, height: 4, borderRadius: 2, minWidth: 0 } as any,
