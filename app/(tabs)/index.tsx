@@ -13,11 +13,10 @@ import Colors from "@/constants/Colors";
 import { useAppTheme } from "@/context/ThemeContext";
 import { NoteCategory, Note } from "@/types/note";
 import { useNotes } from "@/hooks/useNotes";
-import { useRecording } from "@/hooks/useRecording";
+import { useVoiceNoteRecording } from "@/hooks/useVoiceNoteRecording";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { RecordButton } from "@/components/RecordButton";
 import { noteRepository } from "@/data/SqliteNoteDataSource";
-import { transcriptionService } from "@/services/transcriptionService";
 import * as FileSystem from "expo-file-system";
 
 const FILTERS: (NoteCategory | "All")[] = ["All", "Shared", "Meeting", "Ideas"];
@@ -63,12 +62,14 @@ export default function HomeScreen() {
   const {
     isRecording,
     recordingTime,
-    interimTranscript,
-    dialog: recordingDialog,
-    dismissDialog: dismissRecordingDialog,
+    interimText,
+    error: recordingError,
     toggleRecording,
-    cancelRecording,
-  } = useRecording(refresh);
+    cancel: cancelRecording,
+    dismissError: dismissRecordingError,
+    status: recordingStatus,
+  } = useVoiceNoteRecording(refresh);
+  const interimTranscript = interimText;
   const { playingId, togglePlay } = useAudioPlayback();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
@@ -179,47 +180,18 @@ export default function HomeScreen() {
   };
 
   const handleRetryTranscription = async (note: Note) => {
+    // Nuevo pipeline: no hay re-transcripción de archivo M4A disfrazado de WAV (§1.2).
+    // Las notas nuevas (.wav persistido por SpeechRecognizer) no necesitan retry: o se creó con texto o no se creó.
+    // Para notas legacy, informar que deben re-grabarse.
     if (!note.audioUri) return;
-    // Fase 2: reintento automático 1-2 veces con backoff + Fase 3 motor preferido
-    try {
-      await noteRepository.update(note.id, { transcript: "Transcribiendo…" } as any);
-      await refresh();
-      let text: string | null = null;
-      let lastError: string | null = null;
-      const engine = (transcriptionService as any).pickAndroidServicePackage?.() ?? "—";
-      for (let attempt = 0; attempt <= 2; attempt++) {
-        try {
-          if (attempt > 0) await new Promise((r) => setTimeout(r, attempt === 1 ? 600 : 1200));
-          try { text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-CL"); }
-          catch (e: any) {
-            if (String(e?.message ?? e).includes("language-not-supported")) text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-ES");
-            else throw e;
-          }
-          if (text?.trim()) { lastError = null; break; }
-          lastError = "no-speech";
-        } catch (e: any) {
-          lastError = String(e?.message ?? e);
-          if (attempt === 2) throw e;
-        }
-      }
-      const finalTranscript = text?.trim() ? text.trim() : (lastError ? (lastError.includes("language-not-supported") ? "Idioma no soportado — descarga el paquete es-CL/es-ES en Ajustes" : lastError.includes("network") ? "Sin conexión — modelo offline no instalado, revisa Ajustes" : "No se pudo transcribir — toca para reintentar") : "No se pudo transcribir — toca para reintentar");
-      const words = finalTranscript.split(/\s+/).slice(0, 6).join(" ");
-      const finalTitle = finalTranscript.startsWith("No se") || finalTranscript.startsWith("Sin conexión") || finalTranscript.startsWith("Idioma") || finalTranscript.startsWith("Servicio") ? note.title : (words.charAt(0).toUpperCase() + words.slice(1) + (finalTranscript.split(/\s+/).length > 6 ? "…" : ""));
-      let size: number | null = (note as any).audioSize ?? null;
-      try { const info: any = await (FileSystem as any).getInfoAsync(note.audioUri); if (info?.exists) size = info.size ?? size; } catch {}
-      await noteRepository.update(note.id, { transcript: finalTranscript, title: finalTitle, audioSize: size, transcriptionEngine: engine, transcriptionError: lastError } as any);
-    } catch (e: any) {
-      const msg = String(e?.message ?? e);
-      let userMsg = "No se pudo transcribir — toca para reintentar";
-      if (msg.includes("language-not-supported")) userMsg = "Idioma no soportado — descarga el paquete es-CL/es-ES en Ajustes";
-      else if (msg.includes("network")) userMsg = "Sin conexión — modelo offline no instalado, revisa Ajustes";
-      else if (note.audioUri.endsWith(".m4a")) userMsg = "Audio antiguo (.m4a) no compatible — regrabá la nota para usar el nuevo formato";
-      let size: number | null = (note as any).audioSize ?? null;
-      try { const info: any = await (FileSystem as any).getInfoAsync(note.audioUri); if (info?.exists) size = info.size ?? size; } catch {}
-      const eng = (transcriptionService as any).pickAndroidServicePackage?.() ?? null;
-      try { await noteRepository.update(note.id, { transcript: userMsg, audioSize: size, transcriptionEngine: eng, transcriptionError: msg } as any); } catch {}
+    if (note.audioUri.endsWith(".m4a")) {
+      setTechInfoDetails("Esta nota fue grabada con el formato anterior (.m4a AAC) y no es compatible con el nuevo motor.\n\nBorrá esta nota y grabá de nuevo para usar el formato WAV persistido.");
+      setTechInfoNote(note);
+      return;
     }
-    await refresh();
+    // Para .wav del nuevo pipeline, el retry no aplica (el archivo ya fue validado en la sesión). Sugerir re-grabar si fue no-speech.
+    setTechInfoDetails(`Reintentar no es necesario en el nuevo pipeline.\n\nSi esta nota quedó como "No se detectó voz", fue porque no hubo texto en la sesión. Probá grabar de nuevo hablando más cerca del micrófono.\n\nUri: ${note.audioUri.slice(-50)}`);
+    setTechInfoNote(note);
   };
 
   const handleSaveEdit = async (id: string, data: { title: string; transcript: string }) => {
@@ -343,17 +315,16 @@ export default function HomeScreen() {
         onCreate={handleCreateNote}
       />
 
-      {/* Modern dialogs — reemplazan Alert.alert Android 5 */}
+      {/* Diálogo de error de voz — reemplaza recordingDialog; errores no van a SQLite (§17) */}
       <ModernDialog
-        visible={recordingDialog.visible}
-        title={recordingDialog.title}
-        message={recordingDialog.message}
-        variant={recordingDialog.variant}
-        confirmLabel={recordingDialog.confirmLabel}
-        cancelLabel={recordingDialog.cancelLabel}
-        onConfirm={() => { recordingDialog.onConfirm?.(); dismissRecordingDialog(); }}
-        onCancel={dismissRecordingDialog}
-        onClose={dismissRecordingDialog}
+        visible={!!recordingError}
+        title={recordingError?.code === "permission-denied" ? "Permiso denegado" : recordingError?.code === "recording-unsupported" ? "Dispositivo no compatible" : recordingError?.code === "no-speech" ? "No se detectó voz" : "Error de voz"}
+        message={recordingError?.message ?? ""}
+        variant={recordingError?.code === "no-speech" ? "info" : "info"}
+        confirmLabel="Entendido"
+        onConfirm={dismissRecordingError}
+        onCancel={dismissRecordingError}
+        onClose={dismissRecordingError}
       />
       <ModernDialog
         visible={!!confirmDelete}
