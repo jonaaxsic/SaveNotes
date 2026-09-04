@@ -13,9 +13,10 @@ import Colors from "@/constants/Colors";
 import { useAppTheme } from "@/context/ThemeContext";
 import { NoteCategory, Note } from "@/types/note";
 import { useNotes } from "@/hooks/useNotes";
-import { useVoiceNoteRecording } from "@/hooks/useVoiceNoteRecording";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { RecordButton } from "@/components/RecordButton";
+import { RecordingBar } from "@/components/recording/RecordingBar";
 import { noteRepository } from "@/data/SqliteNoteDataSource";
 import * as FileSystem from "expo-file-system";
 
@@ -61,15 +62,14 @@ export default function HomeScreen() {
   const { theme, toggleDrawer, setDrawerActionHandler } = useAppTheme();
   const {
     isRecording,
-    recordingTime,
-    interimText,
+    isProcessing,
+    audioLevel,
     error: recordingError,
-    toggleRecording,
+    start: startRecording,
+    stop: stopRecording,
     cancel: cancelRecording,
     dismissError: dismissRecordingError,
-    status: recordingStatus,
-  } = useVoiceNoteRecording(refresh);
-  const interimTranscript = interimText;
+  } = useVoiceRecorder(refresh);
   const { playingId, togglePlay } = useAudioPlayback();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
@@ -298,14 +298,18 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* RecordButton tap-to-toggle — Option A live with interim */}
-      <RecordButton
-        isRecording={isRecording}
-        recordingTime={recordingTime}
-        interimTranscript={interimTranscript}
-        onPress={toggleRecording}
-        onCancel={cancelRecording}
-      />
+      {/* Waveform pipeline: RecordingBar with real waveform, solid background */}
+      {isRecording || isProcessing ? (
+        <RecordingBar
+          audioLevel={audioLevel}
+          isProcessing={isProcessing}
+          onCancel={cancelRecording}
+          onStop={stopRecording}
+          onSend={stopRecording}
+        />
+      ) : (
+        <RecordButton isRecording={false} onPress={startRecording} onCancel={cancelRecording} />
+      )}
 
       <EditNoteModal
         visible={editModalVisible}
