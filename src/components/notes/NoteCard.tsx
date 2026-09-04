@@ -33,9 +33,10 @@ type Props = {
   onDelete: () => void;
   onRetry?: () => void;
   onPress?: () => void;
+  onShowInfo?: (note: Note) => void;
 };
 
-export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDelete, onRetry, onPress }: Props) {
+export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDelete, onRetry, onPress, onShowInfo }: Props) {
   const { theme } = useAppTheme();
   const c = Colors[theme];
   const hasAudio = note.audioUri !== null;
@@ -73,11 +74,18 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
                 <Text style={[styles.menuItemText, { color: c.text }]}>Editar</Text>
               </Pressable>
               <Pressable
-                style={styles.menuItem}
+                style={[styles.menuItem, { borderBottomColor: c.cardBorder }]}
                 onPress={() => { setMenuOpen(false); onDelete(); }}
               >
                 <Ionicons name="trash-outline" size={16} color={c.destructive} />
                 <Text style={[styles.menuItemText, { color: c.destructive }]}>Borrar</Text>
+              </Pressable>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => { setMenuOpen(false); onShowInfo?.(note); }}
+              >
+                <Ionicons name="information-circle-outline" size={16} color={c.mutedForeground} />
+                <Text style={[styles.menuItemText, { color: c.text }]}>Info técnica</Text>
               </Pressable>
             </View>
           )}

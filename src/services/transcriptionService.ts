@@ -65,11 +65,27 @@ export const transcriptionService = {
   },
 
   /**
-   * Transcribe an audio file on-device.
-   * Returns transcript text or null if nothing recognized.
-   * Throws on hard error (e.g. file not found, language not supported).
-   */
-  async transcribeAudioFile(uri: string, lang: string = "es-ES"): Promise<string | null> {
+    * Devuelve package preferido Android — Fase 3: prioriza Google estándar.
+    */
+  pickAndroidServicePackage(): string | undefined {
+    if (Platform.OS !== "android") return undefined;
+    try {
+      const services: string[] = (ExpoSpeechRecognitionModule as any).getSpeechRecognitionServices?.() ?? [];
+      if (services.includes("com.google.android.googlequicksearchbox")) return "com.google.android.googlequicksearchbox";
+      const g = services.find((s: string) => s.includes("google") && s !== "com.google.android.as");
+      if (g) return g;
+      if (services.includes("com.google.android.as")) return "com.google.android.as";
+      return undefined;
+    } catch { return undefined; }
+  },
+
+  /**
+    * Transcribe an audio file on-device.
+    * Returns transcript text or null if nothing recognized.
+    * Throws on hard error (e.g. file not found, language not supported).
+    * Fase 2+3: usa motor Google estándar por defecto, con fallback a AS.
+    */
+  async transcribeAudioFile(uri: string, lang: string = "es-ES", androidServicePackage?: string): Promise<string | null> {
     if (!uri) throw new Error("transcribeAudioFile: uri is empty");
 
     // Cleanup any previous session
@@ -128,12 +144,15 @@ export const transcriptionService = {
       // Note: requiresOnDeviceRecognition true on iOS is fast and private.
       // On Android, on-device may need offline model installed; we use hybrid (false) with fallback.
       const requiresOnDevice = Platform.OS === "ios";
+      const pkg = androidServicePackage ?? (Platform.OS === "android" ? transcriptionService.pickAndroidServicePackage() : undefined);
+      console.log("[transcribe] uri:", uri.slice(-40), "lang:", lang, "engine:", pkg ?? "(default)");
       ExpoSpeechRecognitionModule.start({
         lang,
         interimResults: false,
         continuous: false,
         requiresOnDeviceRecognition: requiresOnDevice,
         addsPunctuation: true,
+        ...(pkg ? { androidRecognitionServicePackage: pkg } : {}),
         audioSource: {
           uri,
           audioChannels: 1,

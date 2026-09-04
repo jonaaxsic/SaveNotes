@@ -25,13 +25,16 @@ export class SqliteNoteDataSource implements NoteRepository {
     inMemoryNotes.unshift(newNote);
     return newNote;
   }
-  async update(id: string, data: Partial<Pick<Note, "title" | "transcript" | "category">>): Promise<void> {
+  async update(id: string, data: Partial<Pick<Note, "title" | "transcript" | "category" | "audioSize" | "transcriptionEngine" | "transcriptionError">>): Promise<void> {
     const idx = inMemoryNotes.findIndex((n) => n.id === id);
     if (idx === -1) return;
     const now = new Date().toISOString();
     if (data.title !== undefined) inMemoryNotes[idx].title = data.title;
     if (data.transcript !== undefined) inMemoryNotes[idx].transcript = data.transcript;
     if (data.category !== undefined) inMemoryNotes[idx].category = data.category;
+    if ((data as any).audioSize !== undefined) (inMemoryNotes[idx] as any).audioSize = (data as any).audioSize;
+    if ((data as any).transcriptionEngine !== undefined) (inMemoryNotes[idx] as any).transcriptionEngine = (data as any).transcriptionEngine;
+    if ((data as any).transcriptionError !== undefined) (inMemoryNotes[idx] as any).transcriptionError = (data as any).transcriptionError;
     inMemoryNotes[idx].updatedAt = now;
   }
 

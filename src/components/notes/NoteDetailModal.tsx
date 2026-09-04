@@ -33,9 +33,10 @@ type Props = {
   onEdit: () => void;
   onDelete: () => void;
   onRetry?: () => void;
+  onShowInfo?: (note: Note) => void;
 };
 
-export function NoteDetailModal({ visible, note, isPlaying, onClose, onTogglePlay, onShare, onEdit, onDelete, onRetry }: Props) {
+export function NoteDetailModal({ visible, note, isPlaying, onClose, onTogglePlay, onShare, onEdit, onDelete, onRetry, onShowInfo }: Props) {
   const { theme } = useAppTheme();
   const c = Colors[theme];
 
@@ -112,6 +113,12 @@ export function NoteDetailModal({ visible, note, isPlaying, onClose, onTogglePla
               <Text style={[styles.actionText, { color: c.primaryForeground }]}>Compartir</Text>
             </Pressable>
           </View>
+          {onShowInfo && (
+            <Pressable onPress={() => { onClose(); setTimeout(() => onShowInfo(note), 200); }} style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Ionicons name="information-circle-outline" size={14} color={c.mutedForeground} />
+              <Text style={{ fontSize: 12, color: c.mutedForeground, fontWeight: "500" }}>Ver info técnica</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Modal>

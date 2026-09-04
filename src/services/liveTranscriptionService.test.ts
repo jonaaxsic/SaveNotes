@@ -29,7 +29,12 @@ import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
 describe("liveTranscriptionService — Opción A", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("prioriza com.google.android.as si está instalado", () => {
+  it("Fase 3: prioriza googlequicksearchbox sobre AS cuando ambos están instalados", () => {
+    (ExpoSpeechRecognitionModule.getSpeechRecognitionServices as any).mockReturnValue(["com.google.android.as", "com.google.android.googlequicksearchbox", "com.samsung.android.bixby.agent"]);
+    expect(liveTranscriptionService.pickAndroidServicePackage()).toBe("com.google.android.googlequicksearchbox");
+  });
+
+  it("fallback a AS solo si no hay googlequicksearchbox", () => {
     (ExpoSpeechRecognitionModule.getSpeechRecognitionServices as any).mockReturnValue(["com.google.android.as", "com.samsung.android.bixby.agent"]);
     expect(liveTranscriptionService.pickAndroidServicePackage()).toBe("com.google.android.as");
   });
@@ -48,8 +53,8 @@ describe("liveTranscriptionService — Opción A", () => {
     expect(typeof liveTranscriptionService.isRecognitionAvailable()).toBe("boolean");
   });
 
-  it("startLive llama a ExpoSpeechRecognitionModule.start con persist:true y hybrid false", async () => {
-    (ExpoSpeechRecognitionModule.getSpeechRecognitionServices as any).mockReturnValue(["com.google.android.as", "com.google.android.tts"]);
+  it("Fase 1: startLive por defecto NO pide persist (audio viene de expo-audio) — hybrid false", async () => {
+    (ExpoSpeechRecognitionModule.getSpeechRecognitionServices as any).mockReturnValue(["com.google.android.googlequicksearchbox", "com.google.android.as"]);
     let endCb: any = null;
     (ExpoSpeechRecognitionModule.addListener as any).mockImplementation((event: string, cb: any) => {
       if (event === "end") endCb = cb;
@@ -69,12 +74,30 @@ describe("liveTranscriptionService — Opción A", () => {
         continuous: true,
         requiresOnDeviceRecognition: false,
         addsPunctuation: true,
-        recordingOptions: expect.objectContaining({ persist: true, outputFileName: expect.stringMatching(/\.wav$/) }),
       })
     );
-    expect(ExpoSpeechRecognitionModule.start).toHaveBeenCalledWith(expect.objectContaining({ androidRecognitionServicePackage: "com.google.android.as" }));
+    expect(ExpoSpeechRecognitionModule.start).not.toHaveBeenCalledWith(expect.objectContaining({ recordingOptions: expect.anything() }));
+    // Fase 3: debe priorizar googlequicksearchbox
+    expect(ExpoSpeechRecognitionModule.start).toHaveBeenCalledWith(expect.objectContaining({ androidRecognitionServicePackage: "com.google.android.googlequicksearchbox" }));
     expect(result).toHaveProperty("finalTranscript");
     expect(result).toHaveProperty("audioUri");
+  });
+
+  it("startLive con persistAudio:true SÍ envía recordingOptions (opt-in explícito)", async () => {
+    (ExpoSpeechRecognitionModule.getSpeechRecognitionServices as any).mockReturnValue(["com.google.android.googlequicksearchbox"]);
+    let endCb: any = null;
+    (ExpoSpeechRecognitionModule.addListener as any).mockImplementation((event: string, cb: any) => {
+      if (event === "end") endCb = cb;
+      return { remove: vi.fn() };
+    });
+    (ExpoSpeechRecognitionModule.start as any).mockImplementation(() => {
+      setTimeout(() => endCb?.(null), 10);
+    });
+    const p = liveTranscriptionService.startLive({ lang: "es-ES", persistAudio: true, onInterim: () => {} });
+    await p;
+    expect(ExpoSpeechRecognitionModule.start).toHaveBeenCalledWith(
+      expect.objectContaining({ recordingOptions: expect.objectContaining({ persist: true, outputFileName: expect.stringMatching(/\.wav$/) }) })
+    );
   });
 
   it("startLive propaga errorCode en fallo not-allowed", async () => {

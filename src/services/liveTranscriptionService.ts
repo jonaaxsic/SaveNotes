@@ -86,16 +86,20 @@ export const liveTranscriptionService = {
 
   /**
    * Devuelve el package preferido para Android.
-   * Si com.google.android.as está instalado, lo usa; si no, undefined (default del OS).
+   * Fase 3: prioriza Google estándar (googlequicksearchbox) sobre AS,
+   * porque AS no siempre soporta bien persist ni sesiones continuas.
+   * Solo cae a com.google.android.as si no hay otra opción.
    */
   pickAndroidServicePackage(): string | undefined {
     if (Platform.OS !== "android") return undefined;
     try {
       const services: string[] = ExpoSpeechRecognitionModule.getSpeechRecognitionServices();
+      // Fase 3 — orden de preferencia
+      if (services.includes("com.google.android.googlequicksearchbox")) return "com.google.android.googlequicksearchbox";
+      const google = services.find((s) => s.includes("google") && s !== "com.google.android.as");
+      if (google) return google;
       if (services.includes("com.google.android.as")) return "com.google.android.as";
-      // Si no está, preferir Google si existe otro google package, sino default
-      const google = services.find((s) => s.includes("google"));
-      return google ?? undefined;
+      return undefined;
     } catch {
       return undefined;
     }
@@ -132,7 +136,8 @@ export const liveTranscriptionService = {
   } = {}): Promise<LiveSessionResult> {
     const lang = options.lang ?? "es-ES";
     const pkg = options.androidServicePackage ?? this.pickAndroidServicePackage();
-    const persistAudio = options.persistAudio ?? true;
+    // Fase 1: persistAudio por defecto FALSE — el audio real viene de expo-audio, no del reconocedor
+    const persistAudio = options.persistAudio ?? false;
 
     // Limpiar sesión previa
     try { await ExpoSpeechRecognitionModule.abort(); } catch {}

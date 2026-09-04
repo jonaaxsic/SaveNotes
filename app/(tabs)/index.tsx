@@ -18,6 +18,7 @@ import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { RecordButton } from "@/components/RecordButton";
 import { noteRepository } from "@/data/SqliteNoteDataSource";
 import { transcriptionService } from "@/services/transcriptionService";
+import * as FileSystem from "expo-file-system";
 
 const FILTERS: (NoteCategory | "All")[] = ["All", "Shared", "Meeting", "Ideas"];
 const FILTER_LABELS: Record<string, string> = { All: "Todas", Shared: "Compartidas", Meeting: "Reuniones", Ideas: "Ideas" };
@@ -79,6 +80,8 @@ export default function HomeScreen() {
   const [confirmExit, setConfirmExit] = useState(false);
   const [shareNote, setShareNote] = useState<Note | null>(null);
   const [expandedNote, setExpandedNote] = useState<Note | null>(null);
+  const [techInfoNote, setTechInfoNote] = useState<Note | null>(null);
+  const [techInfoDetails, setTechInfoDetails] = useState<string>("");
 
   const c = Colors[theme];
   const background = c.background;
@@ -158,29 +161,63 @@ export default function HomeScreen() {
     setConfirmDelete(null);
   };
 
+  const handleShowTechInfo = async (note: Note) => {
+    let sizeText = "—";
+    if (note.audioUri) {
+      try {
+        const info: any = await (FileSystem as any).getInfoAsync(note.audioUri);
+        if (info?.exists && typeof info.size === "number") sizeText = `${info.size} bytes (${(info.size / 1024).toFixed(1)} KB)`;
+        else if ((note as any).audioSize) sizeText = `${(note as any).audioSize} bytes`;
+      } catch { sizeText = (note as any).audioSize ? `${(note as any).audioSize} bytes` : "—"; }
+    }
+    const engine = (note as any).transcriptionEngine ?? "—";
+    const err = (note as any).transcriptionError ?? "—";
+    const dur = `${note.duration}s`;
+    const uriShort = note.audioUri ? note.audioUri.slice(-50) : "—";
+    setTechInfoDetails(`Motor: ${engine}\nTamaño: ${sizeText}\nDuración: ${dur}\nError: ${err}\n\nUri:\n${uriShort}`);
+    setTechInfoNote(note);
+  };
+
   const handleRetryTranscription = async (note: Note) => {
     if (!note.audioUri) return;
-    // Optimistic: show transcribing
+    // Fase 2: reintento automático 1-2 veces con backoff + Fase 3 motor preferido
     try {
-      await noteRepository.update(note.id, { transcript: "Transcribiendo…" });
+      await noteRepository.update(note.id, { transcript: "Transcribiendo…" } as any);
       await refresh();
       let text: string | null = null;
-      try { text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-CL"); }
-      catch (e: any) {
-        if (String(e?.message ?? e).includes("language-not-supported")) text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-ES");
-        else throw e;
+      let lastError: string | null = null;
+      const engine = (transcriptionService as any).pickAndroidServicePackage?.() ?? "—";
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        try {
+          if (attempt > 0) await new Promise((r) => setTimeout(r, attempt === 1 ? 600 : 1200));
+          try { text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-CL"); }
+          catch (e: any) {
+            if (String(e?.message ?? e).includes("language-not-supported")) text = await transcriptionService.transcribeAudioFile(note.audioUri, "es-ES");
+            else throw e;
+          }
+          if (text?.trim()) { lastError = null; break; }
+          lastError = "no-speech";
+        } catch (e: any) {
+          lastError = String(e?.message ?? e);
+          if (attempt === 2) throw e;
+        }
       }
-      const finalTranscript = text?.trim() ? text.trim() : "No se pudo transcribir — toca para reintentar";
+      const finalTranscript = text?.trim() ? text.trim() : (lastError ? (lastError.includes("language-not-supported") ? "Idioma no soportado — descarga el paquete es-CL/es-ES en Ajustes" : lastError.includes("network") ? "Sin conexión — modelo offline no instalado, revisa Ajustes" : "No se pudo transcribir — toca para reintentar") : "No se pudo transcribir — toca para reintentar");
       const words = finalTranscript.split(/\s+/).slice(0, 6).join(" ");
-      const finalTitle = finalTranscript.startsWith("No se") ? note.title : (words.charAt(0).toUpperCase() + words.slice(1) + (finalTranscript.split(/\s+/).length > 6 ? "…" : ""));
-      await noteRepository.update(note.id, { transcript: finalTranscript, title: finalTitle });
+      const finalTitle = finalTranscript.startsWith("No se") || finalTranscript.startsWith("Sin conexión") || finalTranscript.startsWith("Idioma") || finalTranscript.startsWith("Servicio") ? note.title : (words.charAt(0).toUpperCase() + words.slice(1) + (finalTranscript.split(/\s+/).length > 6 ? "…" : ""));
+      let size: number | null = (note as any).audioSize ?? null;
+      try { const info: any = await (FileSystem as any).getInfoAsync(note.audioUri); if (info?.exists) size = info.size ?? size; } catch {}
+      await noteRepository.update(note.id, { transcript: finalTranscript, title: finalTitle, audioSize: size, transcriptionEngine: engine, transcriptionError: lastError } as any);
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       let userMsg = "No se pudo transcribir — toca para reintentar";
       if (msg.includes("language-not-supported")) userMsg = "Idioma no soportado — descarga el paquete es-CL/es-ES en Ajustes";
       else if (msg.includes("network")) userMsg = "Sin conexión — modelo offline no instalado, revisa Ajustes";
       else if (note.audioUri.endsWith(".m4a")) userMsg = "Audio antiguo (.m4a) no compatible — regrabá la nota para usar el nuevo formato";
-      try { await noteRepository.update(note.id, { transcript: userMsg }); } catch {}
+      let size: number | null = (note as any).audioSize ?? null;
+      try { const info: any = await (FileSystem as any).getInfoAsync(note.audioUri); if (info?.exists) size = info.size ?? size; } catch {}
+      const eng = (transcriptionService as any).pickAndroidServicePackage?.() ?? null;
+      try { await noteRepository.update(note.id, { transcript: userMsg, audioSize: size, transcriptionEngine: eng, transcriptionError: msg } as any); } catch {}
     }
     await refresh();
   };
@@ -283,6 +320,7 @@ export default function HomeScreen() {
               onDelete={() => handleDeleteNote(item)}
               onRetry={() => handleRetryTranscription(item)}
               onPress={() => setExpandedNote(item)}
+              onShowInfo={handleShowTechInfo}
             />
           )}
         />
@@ -360,6 +398,16 @@ export default function HomeScreen() {
         onEdit={() => { if (expandedNote) { const n = expandedNote; setExpandedNote(null); handleEditNote(n); } }}
         onDelete={() => { if (expandedNote) { const n = expandedNote; setExpandedNote(null); handleDeleteNote(n); } }}
         onRetry={() => expandedNote && handleRetryTranscription(expandedNote)}
+        onShowInfo={handleShowTechInfo}
+      />
+      <ModernDialog
+        visible={!!techInfoNote}
+        title="Info técnica"
+        message={techInfoDetails}
+        variant="info"
+        confirmLabel="Cerrar"
+        onConfirm={() => setTechInfoNote(null)}
+        onClose={() => setTechInfoNote(null)}
       />
     </View>
   );

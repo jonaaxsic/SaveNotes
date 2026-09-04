@@ -9,4 +9,8 @@ export type Note = {
   duration: number; // seconds
   createdAt: string; // ISO
   updatedAt: string;
+  // Fase 4 — metadata técnica oculta para diagnóstico
+  audioSize?: number | null; // bytes
+  transcriptionEngine?: string | null; // ej. com.google.android.googlequicksearchbox
+  transcriptionError?: string | null; // código error si falló
 };
