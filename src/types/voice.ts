@@ -7,6 +7,13 @@ export type VoiceRecordingStatus =
   | "completed"
   | "error";
 
+/**
+ * Unified recorder hook state for waveform pipeline (§5).
+ * idle → recording → processing → idle/error
+ * Kept separate from VoiceRecordingStatus for backward compat.
+ */
+export type VoiceRecorderState = "idle" | "recording" | "processing" | "error";
+
 export type SpeechSessionResult = {
   transcript: string;
   audioUri: string;
@@ -21,6 +28,26 @@ export type VoiceSessionErrorCode =
   | "audio-not-saved"
   | "recognition-failed"
   | "unknown";
+
+/**
+ * Extended error codes per §37 — deterministic, no transcript.startsWith fallback.
+ * Includes AUDIO_URI_MISSING and validation codes for reproducible 10-recording criteria:
+ * URI!=null, duration>0, file exists, size>0.
+ */
+export type VoiceErrorCode =
+  | VoiceSessionErrorCode
+  | "AUDIO_URI_MISSING"
+  | "audio-uri-missing"
+  | "audio-not-found"
+  | "audio-empty"
+  | "invalid-duration"
+  | "storage-failed"
+  | "transcription-failed";
+
+export type AudioRecorderResult = {
+  uri: string;
+  durationMs: number;
+};
 
 export class VoiceSessionError extends Error {
   code: VoiceSessionErrorCode;
