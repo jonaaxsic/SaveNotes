@@ -51,10 +51,10 @@ export function RecordButton({
     else if (onPressOut && isRecording) onPressOut();
   };
 
-  // Recording state: toggle to stop, with cancel option + live interim
+  // Recording state: toggle to stop, con fondo opaco §3.1 (antes transparente mostraba tarjetas por detrás)
   if (isRecording) {
     return (
-      <View style={[styles.wrapperFull, { bottom, pointerEvents: "box-none" as any }]}>
+      <View style={[styles.wrapperFull, { bottom: 0, backgroundColor: c.background, paddingTop: 12, paddingBottom: bottomPad + 12, elevation: 10, zIndex: 10, pointerEvents: "box-none" as any }]}>
         <View style={[styles.separatorFull, { backgroundColor: c.border }]} />
         <Text style={[styles.timer, { color: c.text }]}>{formatTime(recordingTime)}</Text>
         {interimTranscript ? (
@@ -96,9 +96,9 @@ export function RecordButton({
     );
   }
 
-  // Idle: tap to start
+  // Idle: tap to start — panel opaco anclado a bottom §3.1
   return (
-    <View style={[styles.wrapperFull, { bottom, pointerEvents: "box-none" as any }]}>
+    <View style={[styles.wrapperFull, { bottom: 0, backgroundColor: c.background, paddingTop: 12, paddingBottom: bottomPad + 12, elevation: 10, zIndex: 10, pointerEvents: "box-none" as any }]}>
       <View style={[styles.separatorFull, { backgroundColor: c.border }]} />
       <Pressable
         style={[

@@ -113,32 +113,39 @@ export function NoteCard({ note, isPlaying, onTogglePlay, onShare, onEdit, onDel
         <Text style={[styles.transcript, { color: c.mutedForeground }]} numberOfLines={2}>{note.transcript}</Text>
       )}
 
-      {/* Player row: ▶ + progress bar + duration + icons */}
-      <View style={styles.playerRow}>
-        <Pressable
-          style={[styles.playBtn, { backgroundColor: c.primary }]}
-          onPress={(e) => { e?.stopPropagation?.(); onTogglePlay(); }}
-        >
-          <Ionicons name={isPlaying ? "pause" : "play"} size={14} color={c.primaryForeground} style={isPlaying ? undefined : { marginLeft: 1 }} />
-        </Pressable>
-
-        {/* Progress bar */}
-        <View style={[styles.progressTrack, { backgroundColor: c.muted }]}>
-          <View style={[styles.progressFill, { backgroundColor: c.primary, width: isPlaying ? "60%" : "0%" }]} />
-        </View>
-
-        <Text style={[styles.durationText, { color: c.text }]}>{formatDuration(note.duration)}</Text>
-
-        {/* Right icons */}
-        <View style={styles.rightIcons}>
-          <Pressable hitSlop={8} onPress={(e) => { e?.stopPropagation?.(); onShare(); }}>
-            <Ionicons name="paper-plane-outline" size={18} color={c.mutedForeground} />
+      {/* Player row §3.1: si no hay audio, no mostrar reproductor falso */}
+      {hasAudio ? (
+        <View style={styles.playerRow}>
+          <Pressable
+            style={[styles.playBtn, { backgroundColor: c.primary }]}
+            onPress={(e) => { e?.stopPropagation?.(); onTogglePlay(); }}
+          >
+            <Ionicons name={isPlaying ? "pause" : "play"} size={14} color={c.primaryForeground} style={isPlaying ? undefined : { marginLeft: 1 }} />
           </Pressable>
-          <Pressable hitSlop={8} onPress={(e) => { e?.stopPropagation?.(); onDelete(); }}>
-            <Ionicons name="trash-outline" size={18} color={c.destructive} />
-          </Pressable>
+
+          {/* Progress bar */}
+          <View style={[styles.progressTrack, { backgroundColor: c.muted }]}>
+            <View style={[styles.progressFill, { backgroundColor: c.primary, width: isPlaying ? "60%" : "0%" }]} />
+          </View>
+
+          <Text style={[styles.durationText, { color: c.text }]}>{formatDuration(note.duration)}</Text>
+
+          {/* Right icons */}
+          <View style={styles.rightIcons}>
+            <Pressable hitSlop={8} onPress={(e) => { e?.stopPropagation?.(); onShare(); }}>
+              <Ionicons name="paper-plane-outline" size={18} color={c.mutedForeground} />
+            </Pressable>
+            <Pressable hitSlop={8} onPress={(e) => { e?.stopPropagation?.(); onDelete(); }}>
+              <Ionicons name="trash-outline" size={18} color={c.destructive} />
+            </Pressable>
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={[styles.noAudioWrap, { backgroundColor: c.muted, borderColor: c.border }]}>
+          <Ionicons name="alert-circle-outline" size={14} color={c.mutedForeground} />
+          <Text style={[styles.noAudioText, { color: c.mutedForeground }]}>Sin audio guardado</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -177,4 +184,6 @@ const styles = StyleSheet.create({
   progressFill: { height: 4, borderRadius: 2 },
   durationText: { fontSize: 12, fontWeight: "500", flexShrink: 0 },
   rightIcons: { flexDirection: "row", alignItems: "center", gap: 14, flexShrink: 0 },
+  noAudioWrap: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, marginTop: 2 },
+  noAudioText: { fontSize: 12, fontWeight: "500", fontStyle: "italic" as const },
 });

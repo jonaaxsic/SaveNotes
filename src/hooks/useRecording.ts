@@ -365,21 +365,11 @@ export function useRecording(onCreated: () => void) {
       return;
     }
 
-    // Fase 2: live caption opcional solo para feedback visual — persistAudio:false, no es fuente de verdad
-    if (recognitionAvailable) {
-      try {
-        const livePromise = liveTranscriptionService.startLive({
-          lang: "es-CL",
-          persistAudio: false,
-          onInterim: (text) => setInterimTranscript(text),
-        });
-        livePromise.catch(() => {});
-        liveSessionRef.current = livePromise;
-      } catch (e) {
-        console.warn("[recording] live interim start failed (no bloquea grabación):", e);
-        liveSessionRef.current = null;
-      }
-    }
+    // §3.1 — NO iniciar live caption en nativo: dos capturas simultáneas (expo-audio + SpeechRecognizer)
+    // compiten por el micrófono y vacían recorder.uri (1-7s → null). Transcripción solo tras stop()
+    // cuando el mic queda libre. En web sí puede coexistir con MediaRecorder.
+    liveSessionRef.current = null;
+    setInterimTranscript("");
   }, [isPermissionGranted, showDialog, recorder]);
 
   const effectiveIsRecording = Platform.OS === "web" ? (webRecording || isRecordingNative) : (isRecordingNative || isFallbackRecording);
@@ -456,17 +446,13 @@ export function useRecording(onCreated: () => void) {
       return;
     }
 
-    // Native — Fase 1+2: audio siempre viene de expo-audio, transcripción file-based con retry
+    // Native — Fase 1+2+3.1: audio solo de expo-audio, sin live paralelo
     setIsTranscribing(true);
     try {
-      // Detener live interim con timeout corto (no es fuente de verdad)
-      try { await liveTranscriptionService.stop(); } catch {}
-      try {
-        if (liveSessionRef.current) {
-          await Promise.race([liveSessionRef.current, new Promise<null>((res) => setTimeout(() => res(null), 1200))]);
-        }
-      } catch {}
+      // §3.1: no hay live que detener en nativo; solo limpiar por si quedó web
+      try { await liveTranscriptionService.abort(); } catch {}
       liveSessionRef.current = null;
+      setInterimTranscript("");
 
       let uri: string | null = null;
       let duration = elapsed;
